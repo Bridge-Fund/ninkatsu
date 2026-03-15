@@ -88,7 +88,7 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
 .cal-nav{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text2);cursor:pointer;transition:.15s}
 .cal-nav:active{background:var(--surface2)}
 .cal-month{font-size:16px;font-weight:700;color:var(--text)}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;width:100%}
 .cal-dow{text-align:center;font-size:11px;color:var(--text3);padding:4px 0;font-weight:500}
 .cal-dow:first-child{color:#E86B8A}
 .cal-dow:last-child{color:#4A90D9}
@@ -287,7 +287,7 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
   <!-- ── カレンダー ── -->
   <div class="screen" id="scr-calendar">
     <div class="topbar"><h1>カレンダー</h1></div>
-    <div class="card" style="padding:14px">
+    <div class="card" style="padding:10px 8px">
       <div class="cal-header">
         <button class="cal-nav" id="cal-prev">‹</button>
         <div class="cal-month" id="cal-month-label"></div>
