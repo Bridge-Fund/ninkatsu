@@ -1,0 +1,18 @@
+{
+  "name": "妊活ノート",
+  "short_name": "妊活ノート",
+  "description": "妊活サポートアプリ - 生理・排卵・服薬・Googleカレンダー統合管理",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FDF7FA",
+  "theme_color": "#E8799C",
+  "orientation": "portrait",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%23E8799C' rx='40'/%3E%3Ctext x='96' y='130' font-size='100' text-anchor='middle'%3E🌸%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
