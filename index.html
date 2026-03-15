@@ -112,7 +112,7 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-w
 .event-item.medication{background:var(--purple-light);border-left-color:#7C5CBF}
 .event-item.injection{background:var(--blue-light);border-left-color:var(--blue)}
 .event-item.timing{background:#EDE7F6;border-left-color:#7B5EA7}
-.event-item.google{background:var(--green-light);border-left-color:var(--green)}
+.event-item.doctor{background:var(--amber-light);border-left-color:var(--amber)}
 .event-emoji{font-size:18px;width:26px;text-align:center}
 .event-text .ev-title{font-size:13px;font-weight:500}
 .event-text .ev-sub{font-size:11px;color:var(--text2)}
@@ -293,16 +293,14 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <div class="cal-month" id="cal-month-label"></div>
         <button class="cal-nav" id="cal-next">›</button>
       </div>
-      <div class="cal-grid" id="cal-dow">
-        <div class="cal-dow">日</div><div class="cal-dow">月</div><div class="cal-dow">火</div>
-        <div class="cal-dow">水</div><div class="cal-dow">木</div><div class="cal-dow">金</div><div class="cal-dow">土</div>
-      </div>
       <div class="cal-grid" id="cal-grid"></div>
     </div>
     <div class="legend">
       <div class="leg"><div class="leg-dot" style="background:var(--pink)"></div>生理</div>
-      <div class="leg"><div class="leg-dot" style="background:var(--purple)"></div>排卵・薬</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--purple)"></div>排卵</div>
+      <div class="leg"><div class="leg-dot" style="background:#7C5CBF"></div>薬</div>
       <div class="leg"><div class="leg-dot" style="background:var(--blue)"></div>注射</div>
+      <div class="leg"><div class="leg-dot" style="background:#E8A020"></div>先生出勤</div>
       <div class="leg"><div class="leg-dot" style="background:var(--green)"></div>個人予定</div>
     </div>
     <div class="event-list" id="cal-events"></div>
@@ -471,19 +469,16 @@ select.form-input{appearance:none;background-image:url("data:image/svg+xml,%3Csv
         <button class="seg-btn" data-v="other" onclick="MedForm.setType(this)">🏥 その他</button>
       </div>
     </div>
-    <div class="form-field">
-      <label>用量（任意）</label>
-      <input type="text" class="form-input" id="med-dosage-in" placeholder="例：1錠">
-    </div>
     <div class="form-row">
       <div class="form-field">
-        <label>服用開始（周期日目）</label>
-        <input type="number" class="form-input" id="med-start-in" value="3" min="1" max="28">
+        <label>用量（任意）</label>
+        <input type="text" class="form-input" id="med-dosage-in" placeholder="例：1錠">
       </div>
-      <div class="form-field">
-        <label>服用終了（周期日目）</label>
-        <input type="number" class="form-input" id="med-end-in" value="7" min="1" max="28">
-      </div>
+    </div>
+    <div class="form-field">
+      <label>服用する周期の日（カンマ区切り）</label>
+      <input type="text" class="form-input" id="med-days-in" placeholder="例: 5,7,9 または 3-7（連続の場合）">
+      <div class="text-sm" style="margin-top:4px">生理1日目を1として入力。例）5日目・7日目・9日目 → 5,7,9</div>
     </div>
     <div class="form-field">
       <label>服用時間</label>
