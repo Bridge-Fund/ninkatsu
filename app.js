@@ -758,25 +758,84 @@ const GCal = {
   tokenClient: null,
   accessToken: null,
   APP_CAL_NAME: '妊活ノート',
+  _gisReady: false,
+  _gisLoading: false,
 
   init(){
     if(!App.gcalClientId) return;
-    // Google Identity Services
-    const gisScript = document.createElement('script');
-    gisScript.src = 'https://accounts.google.com/gsi/client';
-    gisScript.onload = ()=>{
+    // head内のgsi scriptが既に読み込まれていれば即座に初期化
+    if(typeof google !== 'undefined' && google.accounts){
+      this._setupTokenClient();
+    } else {
+      // まだ読み込まれていなければ待機してから初期化
+      window.addEventListener('load', ()=>{
+        if(typeof google !== 'undefined' && google.accounts) this._setupTokenClient();
+        else this._loadGis();
+      }, {once:true});
+    }
+  },
+
+  _setupTokenClient(){
+    try{
       this.tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: App.gcalClientId,
         scope: 'https://www.googleapis.com/auth/calendar',
-        callback: (resp)=>{ if(resp.access_token){ this.accessToken=resp.access_token; this.onSignedIn(); } },
+        callback: (resp)=>{
+          if(resp.access_token){
+            this.accessToken=resp.access_token;
+            this.onSignedIn();
+          } else {
+            toast('Googleログインに失敗しました');
+          }
+        },
       });
+      this._gisReady = true;
+    } catch(e){ console.warn('GIS setup error', e); }
+  },
+
+  _loadGis(){
+    if(this._gisReady || this._gisLoading) return;
+    this._gisLoading = true;
+    const gisScript = document.createElement('script');
+    gisScript.src = 'https://accounts.google.com/gsi/client';
+    gisScript.async = true;
+    gisScript.defer = true;
+    gisScript.onload = ()=>{
+      try{
+        this.tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: App.gcalClientId,
+          scope: 'https://www.googleapis.com/auth/calendar',
+          callback: (resp)=>{
+            if(resp.access_token){
+              this.accessToken=resp.access_token;
+              this.onSignedIn();
+            } else {
+              toast('Googleログインに失敗しました');
+            }
+          },
+        });
+        this._gisReady = true;
+        this._gisLoading = false;
+      } catch(e){ console.warn('GIS init error', e); }
+    };
+    gisScript.onerror = ()=>{
+      this._gisLoading = false;
+      console.warn('GIS script load failed');
     };
     document.head.appendChild(gisScript);
   },
 
   signIn(){
     if(!App.gcalClientId){
-      alert('Googleカレンダー連携を使うには、index.html内の App.gcalClientId にGoogle Cloud ConsoleのクライアントIDを設定してください。\n\nREADME.txtをご覧ください。');
+      alert('Googleカレンダー連携を使うには、app.js内の gcalClientId にGoogle Cloud ConsoleのクライアントIDを設定してください。\n\nREADME.txtをご覧ください。');
+      return;
+    }
+    // GISスクリプトがまだ読み込まれていない場合は読み込んでからリトライ
+    if(!this._gisReady){
+      this._loadGis();
+      toast('Googleサービスを読み込み中... もう一度タップしてください');
+      // 2秒後に再試行
+      setTimeout(()=>{ if(this._gisReady && this.tokenClient) this.tokenClient.requestAccessToken(); }, 2000);
       return;
     }
     if(this.tokenClient) this.tokenClient.requestAccessToken();
