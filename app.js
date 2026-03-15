@@ -71,15 +71,33 @@ const Predict = {
     const p = this.run();
     const meds = DB.getMeds().filter(m=>m.active!==false);
     const events = [];
-    const today = D.today();
 
+    // ── 今周期の生理期間（lastStart〜+4日）
     if(p.periodDays.includes(dateStr))
       events.push({type:'period',title:'生理期間',emoji:'🔴'});
 
+    // ── 次周期の生理予測期間（nextPeriod〜+4日）
+    for(let i=0;i<5;i++){
+      const d = D.ymd(D.addDays(D.parse(p.nextPeriod),i));
+      if(d===dateStr) events.push({type:'period',title:'生理予測',emoji:'🔴'});
+    }
+
+    // ── 今周期の排卵予測日
     if(dateStr===p.ovulDate)
       events.push({type:'ovulation',title:'排卵予測日',emoji:'⭐'});
 
+    // ── 次周期の排卵予測日（nextPeriod + avg-14 日目）
+    const nextOvul = D.ymd(D.addDays(D.parse(p.nextPeriod), p.avg-14-1));
+    if(dateStr===nextOvul)
+      events.push({type:'ovulation',title:'排卵予測日',emoji:'⭐'});
+
+    // ── 今周期のタイミング推奨
     if(p.timingDays.includes(dateStr))
+      events.push({type:'timing',title:'タイミング推奨',emoji:'💜'});
+
+    // ── 次周期のタイミング推奨（nextOvul の前後）
+    const nextTimings = [-2,-1,0,1].map(n=>D.ymd(D.addDays(D.parse(nextOvul),n)));
+    if(nextTimings.includes(dateStr))
       events.push({type:'timing',title:'タイミング推奨',emoji:'💜'});
 
     // 服薬・注射（個別日配列 or 旧startDay/endDay 両対応）
@@ -192,7 +210,14 @@ const Nav = {
     btn.classList.add('active');
 
     // 各画面のレンダリング
-    if(tab==='calendar') Cal.render();
+    if(tab==='calendar'){
+      // ④ Google予定をカレンダー表示前に最新取得してから描画
+      if(App.gcalSignedIn){
+        GCal.fetchPersonalEvents().then(()=>Cal.render());
+      } else {
+        Cal.render();
+      }
+    }
     if(tab==='predict') PredUI.render();
     if(tab==='doctor') DoctorUI.render();
     if(tab==='memo') Memo.render();
@@ -753,31 +778,24 @@ const GCal = {
     if(!this.accessToken) return;
     const now = new Date();
     const from = now.toISOString();
-    const to = new Date(now.getTime()+60*24*3600*1000).toISOString();
+    const to = new Date(now.getTime()+90*24*3600*1000).toISOString();
 
     try{
-      // カレンダー一覧取得
-      const listRes = await fetch(
-        `https://www.googleapis.com/calendar/v3/users/me/calendarList`,
+      const events = [];
+      // ④ 全カレンダーではなく「primary」（本人のメインカレンダー）のみ取得
+      // → 共有カレンダー経由で他人の予定が混入するのを防ぐ
+      const evRes = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?`+
+        `timeMin=${from}&timeMax=${to}&singleEvents=true&orderBy=startTime&maxResults=100`,
         {headers:{Authorization:'Bearer '+this.accessToken}}
       );
-      const calList = await listRes.json();
-      const events = [];
-
-      for(const cal of (calList.items||[])){
-        if(cal.summary===this.APP_CAL_NAME) continue; // アプリ専用カレンダーはスキップ
-        const evRes = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?`+
-          `timeMin=${from}&timeMax=${to}&singleEvents=true&orderBy=startTime&maxResults=50`,
-          {headers:{Authorization:'Bearer '+this.accessToken}}
-        );
-        const evData = await evRes.json();
-        for(const e of (evData.items||[])){
-          const startStr = e.start?.dateTime||e.start?.date;
-          if(!startStr) continue;
-          const date = startStr.length===10 ? startStr : D.ymd(new Date(startStr));
-          events.push({id:e.id, date, title:e.summary||'予定', cal:cal.summary});
-        }
+      const evData = await evRes.json();
+      for(const e of (evData.items||[])){
+        if(e.summary===undefined) continue; // タイトルなしはスキップ
+        const startStr = e.start?.dateTime||e.start?.date;
+        if(!startStr) continue;
+        const date = startStr.length===10 ? startStr : D.ymd(new Date(startStr));
+        events.push({id:e.id, date, title:e.summary||'予定'});
       }
       DB.setGcalEvents(events);
     }catch(err){ console.warn('GCal fetch error', err); }
