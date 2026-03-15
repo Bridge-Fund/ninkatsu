@@ -82,11 +82,17 @@ const Predict = {
     if(p.timingDays.includes(dateStr))
       events.push({type:'timing',title:'タイミング推奨',emoji:'💜'});
 
-    // 服薬（周期日数ベース）
+    // 服薬・注射（個別日配列 or 旧startDay/endDay 両対応）
     const cycleDay = D.diffDays(dateStr, p.lastStart) + 1;
     for(const med of meds){
-      const start = med.startDay||1, end = med.endDay||7;
-      if(cycleDay>=start && cycleDay<=end){
+      let medDays = [];
+      if(med.days && Array.isArray(med.days)){
+        medDays = med.days;
+      } else {
+        const start = med.startDay||1, end = med.endDay||7;
+        for(let i=start;i<=end;i++) medDays.push(i);
+      }
+      if(medDays.includes(cycleDay)){
         events.push({
           type: med.type==='injection'?'injection':'medication',
           title: med.name,
@@ -103,6 +109,23 @@ const Predict = {
     for(const e of gcalEvents){
       if(e.date===dateStr)
         events.push({type:'google',title:e.title,emoji:'📅',googleId:e.id});
+    }
+
+    // 担当医の出勤日（曜日マッチング）
+    const doctors = DB.getDoctors();
+    const dtObj = D.parse(dateStr);
+    const wd = dtObj.getDay();
+    const wdDoc = wd===0 ? 7 : wd;
+    for(const doc of doctors){
+      const slots = (doc.slots||[]).filter(s=>Number(s.wd)===wdDoc);
+      for(const slot of slots){
+        events.push({
+          type:'doctor',
+          title:doc.name,
+          subtitle:`診察 ${slot.start}〜${slot.end}`,
+          emoji:'👩‍⚕️',
+        });
+      }
     }
 
     return events;
@@ -256,7 +279,10 @@ const Cal = {
     const today = D.today();
     const p = Predict.run();
 
-    let html = '';
+    // 曜日ヘッダーを同じグリッドに含める（ズレ防止）
+    const dows = ['日','月','火','水','木','金','土'];
+    let html = dows.map((d,i)=>`<div class="cal-dow" style="${i===0?'color:#E86B8A':i===6?'color:#4A90D9':''}">${d}</div>`).join('');
+
     // 空白
     for(let i=0;i<firstDay;i++) html+=`<div class="cal-day empty"></div>`;
 
@@ -278,7 +304,7 @@ const Cal = {
 
       const dots = events.slice(0,4).map(e=>{
         const c = {period:'var(--pink)',ovulation:'var(--purple)',timing:'#7B5EA7',
-                   medication:'var(--purple)',injection:'var(--blue)',google:'var(--green)'}[e.type]||'var(--text3)';
+                   medication:'#7C5CBF',injection:'var(--blue)',google:'var(--green)',doctor:'var(--amber)'}[e.type]||'var(--text3)';
         return `<div class="dot" style="background:${c}"></div>`;
       }).join('');
 
@@ -488,7 +514,7 @@ const UI = {
           </div>
           <div class="med-info">
             <div class="med-name">${m.name}</div>
-            <div class="med-detail">${m.dosage||''} · 周期${m.startDay}〜${m.endDay}日目</div>
+            <div class="med-detail">${m.dosage||''} · 周期${(m.days&&m.days.length?m.days.join(','):`${m.startDay}〜${m.endDay}`)}日目</div>
           </div>
           <div class="toggle ${m.active!==false?'on':''}" onclick="MedForm.toggle(${i},this)"></div>
           <button class="topbar-btn" style="font-size:14px" onclick="MedForm.openEdit(${i})">✏️</button>
@@ -502,8 +528,7 @@ const UI = {
     document.getElementById('med-add-title').textContent = '薬・注射を追加';
     document.getElementById('med-name-in').value='';
     document.getElementById('med-dosage-in').value='';
-    document.getElementById('med-start-in').value='3';
-    document.getElementById('med-end-in').value='7';
+    document.getElementById('med-days-in').value='';
     document.getElementById('med-time-in').value='08:00';
     document.querySelectorAll('#med-type-seg .seg-btn').forEach((b,i)=>b.classList.toggle('sel',i===0));
     this.open('ov-med-add');
@@ -576,8 +601,12 @@ const MedForm = {
     document.getElementById('med-add-title').textContent='薬・注射を編集';
     document.getElementById('med-name-in').value=m.name||'';
     document.getElementById('med-dosage-in').value=m.dosage||'';
-    document.getElementById('med-start-in').value=m.startDay||3;
-    document.getElementById('med-end-in').value=m.endDay||7;
+    // days配列（新形式）またはstartDay/endDay（旧形式）を表示
+    if(m.days && Array.isArray(m.days)){
+      document.getElementById('med-days-in').value=m.days.join(',');
+    } else {
+      document.getElementById('med-days-in').value=`${m.startDay||3}-${m.endDay||7}`;
+    }
     document.getElementById('med-time-in').value=m.time||'08:00';
     document.querySelectorAll('#med-type-seg .seg-btn').forEach(b=>{
       b.classList.toggle('sel',b.dataset.v===m.type);
@@ -589,13 +618,25 @@ const MedForm = {
   save(){
     const name = document.getElementById('med-name-in').value.trim();
     if(!name) return;
+
+    // days入力をパース（"5,7,9" または "3-7"）
+    const daysStr = document.getElementById('med-days-in').value.trim();
+    let days = [];
+    if(daysStr.includes('-')){
+      const parts = daysStr.split('-');
+      const start = parseInt(parts[0])||1, end = parseInt(parts[1])||7;
+      for(let i=start;i<=end;i++) days.push(i);
+    } else {
+      days = daysStr.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>0);
+    }
+    if(days.length===0) days=[1];
+
     const med = {
       id: Date.now(),
       name,
       type: this.currentType,
       dosage: document.getElementById('med-dosage-in').value.trim()||null,
-      startDay: parseInt(document.getElementById('med-start-in').value)||3,
-      endDay: parseInt(document.getElementById('med-end-in').value)||7,
+      days,
       time: document.getElementById('med-time-in').value||'08:00',
       active: true,
     };
