@@ -112,7 +112,7 @@ const Predict = {
 // ── App 状態管理 ─────────────────────────────────────────────
 const App = {
   gcalSignedIn: false,
-  gcalClientId: '', // Google Cloud ConsoleのクライアントID（README参照）
+  gcalClientId: '933510200109-uo60ubqugf1lg8dp6ii2fg69df218ptd.apps.googleusercontent.com', // Google Cloud ConsoleのクライアントID（README参照）
 
   init(){
     // Service Worker登録
