@@ -299,20 +299,19 @@ const Cal = {
     const months=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
     document.getElementById('cal-month-label').textContent = `${y}年 ${months[m]}`;
 
-    const firstDay = new Date(y,m,1).getDay();
+    const firstDay = new Date(y,m,1).getDay(); // 0=日
     const daysInMonth = new Date(y,m+1,0).getDate();
     const today = D.today();
-    const p = Predict.run();
 
-    // 曜日ヘッダーを同じグリッドに含める（ズレ防止）
-    const dows = ['日','月','火','水','木','金','土'];
-    let html = dows.map((d,i)=>`<div class="cal-dow" style="${i===0?'color:#E86B8A':i===6?'color:#4A90D9':''}">${d}</div>`).join('');
-
-    // 空白
-    for(let i=0;i<firstDay;i++) html+=`<div class="cal-day empty"></div>`;
+    // tableの行を生成
+    let rows = '';
+    let row = '<tr>';
+    // 1日より前の空白セル
+    for(let i=0;i<firstDay;i++) row += '<td class="empty"></td>';
 
     for(let d=1;d<=daysInMonth;d++){
-      const dateStr = `${y}-${String(m+1).padLeft(2,'0')}-${String(d).padLeft(2,'0')}`;
+      const col = (firstDay + d - 1) % 7; // 0=日...6=土
+      const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const events = Predict.eventsForDay(dateStr);
       const isToday = dateStr===today;
       const isSel = dateStr===this.selected;
@@ -320,7 +319,7 @@ const Cal = {
       const hasOvul = events.some(e=>e.type==='ovulation');
       const hasTiming = events.some(e=>e.type==='timing');
 
-      let cls = 'cal-day';
+      let cls = '';
       if(hasPeriod && !isSel) cls += ' period-day';
       if(hasOvul && !isSel) cls += ' ovulation-day';
       if(hasTiming && !isSel && !hasOvul) cls += ' timing-day';
@@ -329,17 +328,31 @@ const Cal = {
 
       const dots = events.slice(0,4).map(e=>{
         const c = {period:'var(--pink)',ovulation:'var(--purple)',timing:'#7B5EA7',
-                   medication:'#7C5CBF',injection:'var(--blue)',google:'var(--green)',doctor:'var(--amber)'}[e.type]||'var(--text3)';
+                   medication:'#7C5CBF',injection:'var(--blue)',google:'var(--green)',doctor:'var(--amber)'}[e.type]||'#ccc';
         return `<div class="dot" style="background:${c}"></div>`;
       }).join('');
 
-      html+=`<div class="${cls}" onclick="Cal.select('${dateStr}')">
-        <div class="day-num">${d}</div>
-        <div class="day-dots">${dots}</div>
-      </div>`;
+      row += `<td class="${cls}" onclick="Cal.select('${dateStr}')">
+        <div class="day-inner">
+          <div class="day-num">${d}</div>
+          <div class="day-dots">${dots}</div>
+        </div>
+      </td>`;
+
+      // 土曜 or 最終日で行を閉じる
+      if(col===6){
+        rows += row + '</tr><tr>';
+        row = '';
+      }
+    }
+    // 残りの空白セルで行を閉じる
+    if(row !== '<tr>' && row !== ''){
+      const lastCol = (firstDay + daysInMonth - 1) % 7;
+      for(let i=lastCol+1;i<7;i++) row += '<td class="empty"></td>';
+      rows += row + '</tr>';
     }
 
-    document.getElementById('cal-grid').innerHTML = html;
+    document.getElementById('cal-tbody').innerHTML = rows;
     this.renderEvents();
   },
 
@@ -556,6 +569,9 @@ const UI = {
     document.getElementById('med-days-in').value='';
     document.getElementById('med-time-in').value='08:00';
     document.querySelectorAll('#med-type-seg .seg-btn').forEach((b,i)=>b.classList.toggle('sel',i===0));
+    MedForm.currentType='pill';
+    // ov-medを先に閉じてからov-med-addを開く（重複で操作不能になるのを防ぐ）
+    this.close('ov-med');
     this.open('ov-med-add');
   },
 
@@ -637,6 +653,7 @@ const MedForm = {
       b.classList.toggle('sel',b.dataset.v===m.type);
     });
     this.currentType = m.type;
+    UI.close('ov-med');
     UI.open('ov-med-add');
   },
 
@@ -670,7 +687,8 @@ const MedForm = {
     else meds.push(med);
     DB.set('medications', meds);
     UI.close('ov-med-add');
-    UI.openMedMgr();
+    // 少し遅らせてov-medを再表示（管理画面に戻る）
+    setTimeout(()=>UI.openMedMgr(), 80);
     HomeUI.render();
     if(App.gcalSignedIn) GCal.syncNow();
     toast('保存しました');
