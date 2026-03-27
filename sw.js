@@ -1,4 +1,4 @@
-const CACHE = 'ninkatu-v4';
+const CACHE = 'ninkatu-v5';
 const ASSETS = ['./index.html', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
