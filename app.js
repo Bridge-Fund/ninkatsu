@@ -153,7 +153,7 @@ const Predict = {
 // ── App 状態管理 ─────────────────────────────────────────────
 const App = {
   gcalSignedIn: false,
-  gcalClientId: '933510200109-uo60ubqugf1lg8dp6ii2fg69df218ptd.apps.googleusercontent.com', // Google Cloud ConsoleのクライアントID（README参照）
+  gcalClientId: '', // Google Cloud ConsoleのクライアントID（README参照）
 
   init(){
     // Service Worker登録
@@ -164,6 +164,31 @@ const App = {
 
     // 日付変更チェック（1分ごと）
     setInterval(()=>this.refreshAll(), 60000);
+
+    // Googleカレンダーのバックグラウンド定期更新（15分ごと）
+    setInterval(()=>{
+      if(this.gcalSignedIn){
+        GCal.fetchPersonalEvents().then(()=>{
+          Cal.render();
+          HomeUI.render();
+        });
+      }
+    }, 15 * 60 * 1000);
+
+    // アプリがフォアグラウンドに戻ったときに再取得
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState==='visible' && this.gcalSignedIn){
+        const lastFetch = GCal.lastFetchTime;
+        const now = Date.now();
+        // 最後の取得から5分以上経っていたら再取得
+        if(!lastFetch || now - lastFetch > 5 * 60 * 1000){
+          GCal.fetchPersonalEvents().then(()=>{
+            Cal.render();
+            HomeUI.render();
+          });
+        }
+      }
+    });
   },
 
   refreshAll(){
@@ -211,7 +236,7 @@ const Nav = {
 
     // 各画面のレンダリング
     if(tab==='calendar'){
-      // ④ Google予定をカレンダー表示前に最新取得してから描画
+      Cal.updateLastSyncLabel();
       if(App.gcalSignedIn){
         GCal.fetchPersonalEvents().then(()=>Cal.render());
       } else {
@@ -359,6 +384,33 @@ const Cal = {
   select(dateStr){
     this.selected = dateStr;
     this.render();
+  },
+
+  // 同期中スピナー表示制御
+  showSyncing(on){
+    const el = document.getElementById('cal-sync-status');
+    if(!el) return;
+    el.style.display = on ? 'flex' : 'none';
+  },
+
+  // 最終同期時刻ラベルの更新
+  updateLastSyncLabel(){
+    const el = document.getElementById('cal-last-sync');
+    if(!el) return;
+    const ts = GCal.lastFetchTime || DB.get('gcal_last_fetch');
+    if(!ts){ el.textContent=''; return; }
+    const diff = Math.round((Date.now()-ts)/60000);
+    if(diff < 1) el.textContent = '今同期しました';
+    else if(diff < 60) el.textContent = `${diff}分前に同期`;
+    else el.textContent = `${Math.round(diff/60)}時間前に同期`;
+  },
+
+  // 手動同期
+  async manualSync(){
+    if(!App.gcalSignedIn){ toast('Googleカレンダーに連携してください'); return; }
+    await GCal.fetchPersonalEvents();
+    this.render();
+    toast('Googleカレンダーを更新しました ✓');
   },
 
   renderEvents(){
@@ -844,38 +896,56 @@ const GCal = {
   async onSignedIn(){
     App.gcalSignedIn = true;
     HomeUI.render();
-    UI.openGcal();
+    UI.close('ov-gcal');
+    toast('Googleカレンダーと連携しました 📅');
     await this.fetchPersonalEvents();
     await this.writePredictions();
-    toast('Googleカレンダーと連携しました 📅');
+    Cal.render();
+    HomeUI.render();
+    UI.openGcal(); // 連携済み状態で再表示
   },
 
   // 個人予定を読み込む
   async fetchPersonalEvents(){
     if(!this.accessToken) return;
+    Cal.showSyncing(true);
     const now = new Date();
     const from = now.toISOString();
     const to = new Date(now.getTime()+90*24*3600*1000).toISOString();
 
     try{
       const events = [];
-      // ④ 全カレンダーではなく「primary」（本人のメインカレンダー）のみ取得
-      // → 共有カレンダー経由で他人の予定が混入するのを防ぐ
       const evRes = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?`+
         `timeMin=${from}&timeMax=${to}&singleEvents=true&orderBy=startTime&maxResults=100`,
         {headers:{Authorization:'Bearer '+this.accessToken}}
       );
       const evData = await evRes.json();
+
+      // トークン切れ検知
+      if(evData.error?.status==='UNAUTHENTICATED' || evData.error?.code===401){
+        App.gcalSignedIn = false;
+        toast('Googleセッションが切れました。再連携してください');
+        HomeUI.render();
+        return;
+      }
+
       for(const e of (evData.items||[])){
-        if(e.summary===undefined) continue; // タイトルなしはスキップ
+        if(e.summary===undefined) continue;
         const startStr = e.start?.dateTime||e.start?.date;
         if(!startStr) continue;
         const date = startStr.length===10 ? startStr : D.ymd(new Date(startStr));
         events.push({id:e.id, date, title:e.summary||'予定'});
       }
       DB.setGcalEvents(events);
-    }catch(err){ console.warn('GCal fetch error', err); }
+      this.lastFetchTime = Date.now();
+      DB.set('gcal_last_fetch', this.lastFetchTime);
+      Cal.updateLastSyncLabel();
+    }catch(err){
+      console.warn('GCal fetch error', err);
+    } finally {
+      Cal.showSyncing(false);
+    }
   },
 
   // 予測・服薬イベントを書き込む
